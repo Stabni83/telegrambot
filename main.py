@@ -76,7 +76,7 @@ def handle_message(message):
     if message.text in emoji_map:
         user_guesses[chat_id].append(emoji_map[message.text])
         
-        if len(user_guesses[chat_id]) < 5:
+        if len(user_guesses[chat_id]) < 3:
             remaining = 3 - len(user_guesses[chat_id])
             bot.send_message(chat_id, f'{remaining} مهره دیگر انتخاب کنید')
             return
@@ -91,7 +91,7 @@ def handle_message(message):
             "\nوضعیت مهره‌ها:"
         ]
         
-        for i in range(5):
+        for i in range(3):
             status = "✅ درست" if user_guesses[chat_id][i] == nuts_select[chat_id][i] else "❌ نادرست"
             feedback.append(f"مهره {i+1}: {status}")
         
@@ -101,7 +101,7 @@ def handle_message(message):
             markup.add(types.KeyboardButton('شروع دوباره'), types.KeyboardButton('بازگشت'))
             bot.send_message(chat_id, '\n'.join(feedback), reply_markup=markup)
             clean_user_data(chat_id)
-        elif user_attempts[chat_id] >= 3:
+        elif user_attempts[chat_id] >= 5:
             # تبدیل حروف به استیکرها برای نمایش
             correct_emojis = [color_to_emoji[color] for color in nuts_select[chat_id]]
             feedback.append("\n😞 شما باختید! مهره‌های صحیح بودند: " + ' '.join(correct_emojis))
@@ -110,7 +110,7 @@ def handle_message(message):
             bot.send_message(chat_id, '\n'.join(feedback), reply_markup=markup)
             clean_user_data(chat_id)
         else:
-            feedback.append(f"\nدوباره امتحان کنید! (حدس‌های باقیمانده: {3 - user_attempts[chat_id]})")
+            feedback.append(f"\nدوباره امتحان کنید! (حدس‌های باقیمانده: {5 - user_attempts[chat_id]})")
             bot.send_message(chat_id, '\n'.join(feedback))
             user_guesses[chat_id] = []
 
