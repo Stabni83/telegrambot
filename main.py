@@ -76,7 +76,7 @@ def handle_message(message):
     if message.text in emoji_map:
         user_guesses[chat_id].append(emoji_map[message.text])
         
-        if len(user_guesses[chat_id]) < 3:
+        if len(user_guesses[chat_id]) < 5:
             remaining = 3 - len(user_guesses[chat_id])
             bot.send_message(chat_id, f'{remaining} مهره دیگر انتخاب کنید')
             return
@@ -85,13 +85,13 @@ def handle_message(message):
         user_attempts[chat_id] += 1
         
         feedback = [
-            f"نتیجه حدس شما (تلاش {user_attempts[chat_id]}/3):",
+            f"نتیجه حدس شما (تلاش {user_attempts[chat_id]}/5):",
             f"مهره‌های صحیح: {result['correct_select']}",
             f"مهره‌های در موقعیت صحیح: {result['correct_position']}",
             "\nوضعیت مهره‌ها:"
         ]
         
-        for i in range(3):
+        for i in range(5):
             status = "✅ درست" if user_guesses[chat_id][i] == nuts_select[chat_id][i] else "❌ نادرست"
             feedback.append(f"مهره {i+1}: {status}")
         
