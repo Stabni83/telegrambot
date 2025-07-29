@@ -4,96 +4,94 @@ import telebot
 from flask import Flask
 from threading import Thread
 
-# تنظیمات اولیه
-TOKEN = os.environ['TOKEN']
+
+TOKEN = os.environ.get('TOKEN') or 'توکن_خود_را_وارد_کنید'
 bot = telebot.TeleBot(TOKEN)
-server = Flask(__name__)
+app = Flask(__name__)
 
-# دیکشنری‌های ذخیره وضعیت بازی
-games = {}
-attempts = {}
 
-# انتخاب تصادفی رنگ‌ها برای بازی
-def generate_secret():
-    colors = ['❤️', '💙', '💚', '💜']
-    return random.sample(colors, 3)
+user_data = {}
 
-# بررسی حدس کاربر
-def check_guess(secret, guess):
-    correct_pos = sum(s == g for s, g in zip(secret, guess))
-    correct_col = len(set(secret) & set(guess))
-    return correct_pos, correct_col - correct_pos
+class Game:
+    def __init__(self):
+        self.secret = random.sample(['❤️', '💙', '💚', '💜'], 3)
+        self.attempts = 0
 
-# دستور شروع بازی
+# صفحه اصلی وب
+@app.route('/')
+def home():
+    return "ربات Mastermind فعال است! 🤖"
+
+
 @bot.message_handler(commands=['start', 'game'])
 def start_game(message):
     chat_id = message.chat.id
-    games[chat_id] = generate_secret()
-    attempts[chat_id] = 0
+    user_data[chat_id] = Game()
     
-    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.row('❤️', '💙', '💚', '💜')
-    markup.row('🔴 بازی جدید', '🔚 خروج')
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=4)
+    markup.add('❤️', '💙', '💚', '💜')
     
-    bot.send_message(chat_id, 
+    bot.send_message(
+        chat_id,
         "🎮 بازی Mastermind شروع شد!\n"
-        "3 رنگ را انتخاب کنید (مثال: ❤️💙💚)\n"
-        "شما 5 فرصت دارید",
-        reply_markup=markup)
+        "ترکیب 3 رنگ مخفی ساخته شده است.\n"
+        "شما 5 فرصت دارید با ارسال ترکیبی مثل ❤️💙💚 حدس بزنید.",
+        reply_markup=markup
+    )
 
-# پردازش حدس کاربر
 @bot.message_handler(func=lambda m: True)
-def handle_guess(message):
+def handle_message(message):
     chat_id = message.chat.id
-    text = message.text
+    text = message.text.strip()
     
-    if text == '🔴 بازی جدید':
+   
+    if chat_id not in user_data:
         start_game(message)
         return
-        
-    if text == '🔚 خروج':
-        bot.send_message(chat_id, "بازی پایان یافت", reply_markup=telebot.types.ReplyKeyboardRemove())
-        return
-        
-    if chat_id not in games:
-        start_game(message)
-        return
-        
-    # بررسی حدس
-    if len(text) != 3 or any(c not in ['❤️', '💙', '💚', '💜'] for c in text):
-        bot.send_message(chat_id, "لطفاً دقیقاً 3 ایموجی از بین ❤️💙💚💜 انتخاب کنید")
-        return
-        
-    attempts[chat_id] += 1
-    guess = list(text)
-    secret = games[chat_id]
-    pos, col = check_guess(secret, guess)
     
-    if pos == 3:
-        bot.send_message(chat_id, f"🎉 برنده شدید! پاسخ صحیح بود: {''.join(secret)}")
-        del games[chat_id]
-        return
+    game = user_data[chat_id]
+    
+   
+    if len(text) == 3 and all(emoji in ['❤️', '💙', '💚', '💜'] for emoji in text):
+        game.attempts += 1
+        guess = list(text)
+        correct_pos = sum(s == g for s, g in zip(game.secret, guess))
+        correct_col = len(set(game.secret) & set(guess)) - correct_pos
         
-    if attempts[chat_id] >= 5:
-        bot.send_message(chat_id, f"😞 باختید! پاسخ صحیح بود: {''.join(secret)}")
-        del games[chat_id]
-        return
-        
-    bot.send_message(chat_id,
-        f"🔍 نتیجه حدس {attempts[chat_id]}/5:\n"
-        f"تعداد در موقعیت صحیح: {pos}\n"
-        f"تعداد رنگ صحیح در موقعیت اشتباه: {col}")
+        if correct_pos == 3:
+            bot.send_message(
+                chat_id,
+                f"🎉 برنده شدید! پاسخ صحیح: {''.join(game.secret)}",
+                reply_markup=types.ReplyKeyboardRemove()
+            )
+            del user_data[chat_id]
+        elif game.attempts >= 5:
+            bot.send_message(
+                chat_id,
+                f"☹️ باختید! پاسخ صحیح بود: {''.join(game.secret)}",
+                reply_markup=types.ReplyKeyboardRemove()
+            )
+            del user_data[chat_id]
+        else:
+            bot.send_message(
+                chat_id,
+                f"🔍 حدس {game.attempts}/5:\n"
+                f"در موقعیت صحیح: {correct_pos}\n"
+                f"رنگ صحیح در موقعیت اشتباه: {correct_col}"
+            )
+    else:
+        bot.send_message(
+            chat_id,
+            "⚠️ لطفاً دقیقاً 3 ایموجی از ❤️💙💚💜 ارسال کنید\n"
+            "مثال: ❤️💙💚"
+        )
 
-# سرور Flask برای فعال ماندن
-@server.route('/')
-def home():
-    return "🤖 ربات بازی Mastermind فعال است"
 
-# اجرای همزمان
-def run_server():
-    server.run(host='0.0.0.0', port=8080)
+def run_flask():
+    app.run(host='0.0.0.0', port=8080)
 
 if __name__ == '__main__':
-    Thread(target=run_server).start()
     print("✅ ربات فعال شد!")
-    bot.polling(non_stop=True)
+    flask_thread = Thread(target=run_flask)
+    flask_thread.start()
+    bot.infinity_polling()
