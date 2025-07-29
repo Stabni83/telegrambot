@@ -1,44 +1,99 @@
 import os
+import random
 import telebot
 from flask import Flask
 from threading import Thread
 
-
-TOKEN = os.environ.get('TOKEN')  
+# تنظیمات اولیه
+TOKEN = os.environ['TOKEN']
 bot = telebot.TeleBot(TOKEN)
-app = Flask(__name__)
+server = Flask(__name__)
 
+# دیکشنری‌های ذخیره وضعیت بازی
+games = {}
+attempts = {}
 
-@app.route('/')
-def home():
-    return "ربات تلگرام در حال اجراست 🚀"
+# انتخاب تصادفی رنگ‌ها برای بازی
+def generate_secret():
+    colors = ['❤️', '💙', '💚', '💜']
+    return random.sample(colors, 3)
 
+# بررسی حدس کاربر
+def check_guess(secret, guess):
+    correct_pos = sum(s == g for s, g in zip(secret, guess))
+    correct_col = len(set(secret) & set(guess))
+    return correct_pos, correct_col - correct_pos
 
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    bot.send_message(message.chat.id, "👋 سلام! به ربات من خوش آمدید!\n/game را برای شروع بازی ارسال کنید")
-
-@bot.message_handler(commands=['game'])
+# دستور شروع بازی
+@bot.message_handler(commands=['start', 'game'])
 def start_game(message):
+    chat_id = message.chat.id
+    games[chat_id] = generate_secret()
+    attempts[chat_id] = 0
+    
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add('❤️', '💙', '💚', '💜')
-    bot.send_message(message.chat.id, "یک رنگ انتخاب کنید:", reply_markup=markup)
+    markup.row('❤️', '💙', '💚', '💜')
+    markup.row('🔴 بازی جدید', '🔚 خروج')
+    
+    bot.send_message(chat_id, 
+        "🎮 بازی Mastermind شروع شد!\n"
+        "3 رنگ را انتخاب کنید (مثال: ❤️💙💚)\n"
+        "شما 5 فرصت دارید",
+        reply_markup=markup)
 
+# پردازش حدس کاربر
 @bot.message_handler(func=lambda m: True)
-def handle_all(message):
-    if message.text in ['❤️', '💙', '💚', '💜']:
-        bot.send_message(message.chat.id, f"شما {message.text} را انتخاب کردید!")
-    else:
-        bot.send_message(message.chat.id, "دستور نامعتبر! /start را امتحان کنید")
+def handle_guess(message):
+    chat_id = message.chat.id
+    text = message.text
+    
+    if text == '🔴 بازی جدید':
+        start_game(message)
+        return
+        
+    if text == '🔚 خروج':
+        bot.send_message(chat_id, "بازی پایان یافت", reply_markup=telebot.types.ReplyKeyboardRemove())
+        return
+        
+    if chat_id not in games:
+        start_game(message)
+        return
+        
+    # بررسی حدس
+    if len(text) != 3 or any(c not in ['❤️', '💙', '💚', '💜'] for c in text):
+        bot.send_message(chat_id, "لطفاً دقیقاً 3 ایموجی از بین ❤️💙💚💜 انتخاب کنید")
+        return
+        
+    attempts[chat_id] += 1
+    guess = list(text)
+    secret = games[chat_id]
+    pos, col = check_guess(secret, guess)
+    
+    if pos == 3:
+        bot.send_message(chat_id, f"🎉 برنده شدید! پاسخ صحیح بود: {''.join(secret)}")
+        del games[chat_id]
+        return
+        
+    if attempts[chat_id] >= 5:
+        bot.send_message(chat_id, f"😞 باختید! پاسخ صحیح بود: {''.join(secret)}")
+        del games[chat_id]
+        return
+        
+    bot.send_message(chat_id,
+        f"🔍 نتیجه حدس {attempts[chat_id]}/5:\n"
+        f"تعداد در موقعیت صحیح: {pos}\n"
+        f"تعداد رنگ صحیح در موقعیت اشتباه: {col}")
 
-# 4. اجرای همزمان
-def run_flask():
-    app.run(host='0.0.0.0', port=8080)
+# سرور Flask برای فعال ماندن
+@server.route('/')
+def home():
+    return "🤖 ربات بازی Mastermind فعال است"
 
-def run_bot():
-    print("✅ ربات فعال شد!")
-    bot.polling(non_stop=True)
+# اجرای همزمان
+def run_server():
+    server.run(host='0.0.0.0', port=8080)
 
 if __name__ == '__main__':
-    Thread(target=run_flask).start()
-    run_bot()
+    Thread(target=run_server).start()
+    print("✅ ربات فعال شد!")
+    bot.polling(non_stop=True)
