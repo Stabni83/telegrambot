@@ -3,13 +3,14 @@ import random
 from telebot import TeleBot, types
 from flask import Flask
 from threading import Thread
+import time
 
-
-TOKEN = os.environ.get('TOKEN')  
+# تنظیمات
+TOKEN = os.environ.get('TOKEN')
 bot = TeleBot(TOKEN)
 app = Flask(__name__)
 
-
+# ذخیره وضعیت بازی
 games = {}
 
 class GameState:
@@ -17,12 +18,21 @@ class GameState:
         self.secret = random.sample(['❤️', '💙', '💚', '💜'], 3)
         self.attempts = 0
 
-
+# صفحه وضعیت
 @app.route('/')
 def home():
     return "🤖 ربات Mastermind فعال | https://t.me/{}".format(bot.get_me().username)
 
+# مدیریت خطای 409
+def safe_polling():
+    while True:
+        try:
+            bot.infinity_polling()
+        except Exception as e:
+            print(f"خطا در اتصال: {str(e)}")
+            time.sleep(10)  # توقف 10 ثانیه قبل از اتصال مجدد
 
+# دستورات ربات
 @bot.message_handler(commands=['start', 'game'])
 def start_game(message):
     chat_id = message.chat.id
@@ -32,7 +42,7 @@ def start_game(message):
     markup.add('❤️', '💙', '💚', '💜', '🔄 بازی جدید', '🚪 خروج')
     
     bot.send_message(
-        chat_id=chat_id,  # اصلاح شده: استفاده از chat_id به جای reply_to
+        chat_id=chat_id,
         text=(
             "🎮 بازی Mastermind\n\n"
             "ترکیب 3 رنگ مخفی ساخته شد!\n"
@@ -67,7 +77,6 @@ def handle_guess(message):
         
     game = games[chat_id]
     
-  
     if len(text) != 3 or not all(emoji in ['❤️', '💙', '💚', '💜'] for emoji in text):
         bot.send_message(
             chat_id=chat_id,
@@ -79,7 +88,6 @@ def handle_guess(message):
     guess = list(text)
     correct_pos = sum(s == g for s, g in zip(game.secret, guess))
     correct_col = len(set(game.secret) & set(guess)) - correct_pos
-    
     
     if correct_pos == 3:
         bot.send_message(
@@ -105,11 +113,23 @@ def handle_guess(message):
             )
         )
 
-
+# اجرای همزمان
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
 
 if __name__ == '__main__':
     print("✅ ربات فعال شد!")
-    Thread(target=run_flask).start()
-    bot.infinity_polling()
+    
+    # اجرای سرور Flask در تابع جداگانه
+    flask_thread = Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+    
+    # اجرای ربات با مدیریت خطا
+    polling_thread = Thread(target=safe_polling)
+    polling_thread.daemon = True
+    polling_thread.start()
+    
+    # نگه داشتن برنامه فعال
+    while True:
+        time.sleep(1)
